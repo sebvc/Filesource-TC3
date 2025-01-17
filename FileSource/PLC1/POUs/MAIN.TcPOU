@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.14">
+  <POU Name="MAIN" Id="{b830ea89-5831-493f-a15f-06412e0d9117}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    hr                :    HRESULT;
+    fbCamera          :    FB_VN_SimpleCameraControl;
+    eState            :    ETcVnCameraState;
+    ipImageIn         :    ITcVnImage;
+    ipImageInDisp     :    ITcVnDisplayableImage; 
+    nNewImageCounter  :    UINT;
+
+	bAquired: BOOL;
+	// QR CODE reading
+	decoded_QR_data: ITcVnContainer;
+	visionRecipies: INT := 10;
+	decoded_QR_data_str: STRING(255);
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[eState := fbCamera.GetState();
+(*
+IF eState = TCVN_CS_ERROR THEN
+    hr := fbCamera.Reset();
+
+ELSIF eState < TCVN_CS_ACQUIRING THEN
+    hr := fbCamera.StartAcquisition();
+
+ELSIF eState = TCVN_CS_ACQUIRING THEN
+    hr := fbCamera.GetCurrentImage(ipImageIn); 
+
+    // Check if new Image was received
+    IF SUCCEEDED(hr) AND ipImageIn <> 0 THEN 
+        nNewImageCounter := nNewImageCounter + 1; 
+
+        // Place to call vision algorithms
+        hr := F_VN_TransformIntoDisplayableImage (ipImageIn, ipImageInDisp, hr);
+    END_IF
+END_IF
+*)
+//---
+hr := S_OK;
+eState := fbCamera.GetState();
+	CASE eState OF
+		TCVN_CS_ERROR: // -1 == Error
+			hr := fbCamera.Reset();
+		0..5:// also had 7 originally 
+			hr := fbCamera.StartAcquisition();
+		TCVN_CS_ACQUIRING: // 6 = Aquiring
+		// Check if new Image was received
+	    hr 	:=	 fbCamera.GetCurrentImage(ipImageIn);
+		IF SUCCEEDED(hr) AND ipImageIn <> 0 THEN 
+    	    nNewImageCounter := nNewImageCounter + 1; 	
+			
+			hr := F_VN_CopyIntoDisplayableImage(ipImageIn, ipImageInDisp, hr);
+		
+			//Perform Vision Processing
+			
+		END_IF
+	END_CASE
+	
+CASE visionRecipies OF
+	10:	// Read QR Code
+		hr := F_VN_ReadQRCode(ipSrcImage:= ipImageIn, ipDecodedData:= decoded_QR_data, hrPrev:= hr);
+		IF hr = S_OK THEN
+			// Export Code into String
+			hr := F_VN_ExportSubContainer_String(decoded_QR_data, 0, decoded_QR_data_str, 255, hr);
+			IF hr = S_OK THEN
+				// Export Code into String
+				hr := F_VN_PutLabel(sText:= 'QR Code', 
+									ipDestImage:= ipImageIn, 
+									nX:= 15, 
+									nY:= 30, 
+									fFontScale:= 1, 
+									hrPrev:= hr);
+				hr := F_VN_CopyIntoDisplayableImage(ipImageIn, ipImageInDisp, hr);
+		
+			END_IF
+		END_IF
+	ELSE visionRecipies := 10;
+END_CASE
+]]></ST>
+    </Implementation>
+    <LineIds Name="MAIN">
+      <LineId Id="6" Count="60" />
+      <LineId Id="2" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
